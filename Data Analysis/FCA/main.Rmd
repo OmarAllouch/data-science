@@ -1,0 +1,286 @@
+---
+title: "TP AFC"
+author: "MATHIEU SROUR AND OMAR ALLOUCH"
+date: "2023-11-15"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+## AFC
+
+### 1)
+
+#### Importation et visualisation des donneés X)
+```{r}
+library("readxl")
+#Read data from excel
+X <- read_excel("TP_AFC_majeur1718_travail.xlsx", na = " ")
+X <- as.data.frame(X[, 2:3])
+X <- na.omit(X)
+print(X)
+```
+#### Add column names)
+```{r}
+V0 <- with(X, table(Sexe, Fonction))
+rownames(V0) <- c("Non répondu", "H", "F")
+colnames(V0) <- c(
+  "Non répondu", "Administratif", "Technicien (OS)",
+  "Ingénieur", "Technicien supérieur", "Direction",
+  "Contractuel S1", "Contractuel S2"
+)
+```
+#### Tableau des fréquences)
+```{r}
+k <- 248
+V <- V0 / k
+print(V)
+```
+#### Création des Matrice diagonales des marges en lignes et en colonnes)
+
+$D_n$ Matrice diagonale des marges en ligne $f_{i.}$\
+$D_p$ matrice diagonale des marges en colonne $f_{.j}$\
+
+```{r pressure, echo=FALSE}
+I <- length(unique(X[, 1]))
+J <- length(unique(X[, 2]))
+
+Dn <- diag(I)
+
+rownames(Dn) <- c("Non répondu", "H", "F")
+colnames(Dn) <- c("Non répondu", "H", "F")
+
+Dp <- diag(J)
+
+rownames(Dp) <- c(
+  "Non répondu", "Administratif", "Technicien (OS)",
+  "Ingénieur", "Technicien supérieur", "Direction",
+  "Contractuel S1", "Contractuel S2"
+)
+colnames(Dp) <- c(
+  "Non répondu", "Administratif", "Technicien (OS)",
+  "Ingénieur", "Technicien supérieur", "Direction",
+  "Contractuel S1", "Contractuel S2"
+)
+
+for (i in 1:I) {
+  S <- 0
+  for (j in 1:J) {
+    S <- S + V[i, j]
+  }
+  Dn[i, i] <- S
+}
+
+for (j in 1:J) {
+  S <- 0
+  for (i in 1:I) {
+    S <- S + V[i, j]
+  }
+  Dp[j, j] <- S
+}
+
+print(Dn)
+print("Dp")
+print(Dp)
+```
+
+####Profils lignes et colonnes)
+
+Profil ligne : répartition de la variable Fonction en fonction de la modalité i de la variable Sexe
+
+```{r}
+line_profiles <- solve(Dn) %*% V
+print(line_profiles)
+```
+
+Profil colonne : répartition de la variable Sexe en fonction de la modalité i de la variable Fonction
+
+```{r}
+column_profiles <- solve(Dp) %*% t(V)
+print(column_profiles)
+```
+
+#### Création de la matrice diagonalisable)
+
+```{r}
+S <- t(V) %*% line_profiles %*% solve(Dp)
+A <- sqrt(solve(Dp)) %*% t(V) %*% line_profiles %*% sqrt(solve(Dp))
+print(A)
+```
+### 2)
+
+#### Décomposition spectrale pour déterminer les valeurs et les vecteurs propres de S)
+
+```{r}
+decomp1 <- eigen(A)
+eigen_values1 <- decomp1$values
+eigen_vectors1 <- decomp1$vectors
+
+print(eigen_values1)
+print(eigen_vectors1)
+```
+
+
+```{r}
+# calcul des directions des axes factoriels
+u1 <- sqrt(Dp) %*% eigen_vectors1[, 1]
+u2 <- sqrt(Dp) %*% eigen_vectors1[, 2]
+
+# nouvelles coordonnées des individus sur le nouveau plan factoriel
+C1 <- V %*% u1
+C2 <- V %*% u2
+
+# Visualisation du nuage de points dans l'hyperplan obtenu
+plot(C1, C2, type = "p", xlim = c(-0.15, 0.05), ylim = c(-0.1, 0.1), col = "blue")
+text(C1, C2, rownames(V), cex = 0.7, pos = 3, col = "blue")
+abline(h = 0, col = "gray")
+abline(v = 0, col = "gray")
+```
+#### Matrice à diagonaliser)
+
+```{r}
+T <- V %*% column_profiles %*% solve(Dn)
+
+A2 <- sqrt(solve(Dn)) %*% V %*% column_profiles %*% sqrt(solve(Dn))
+print(A2)
+```
+
+#### Décomposition spectrale pour déterminer les valeurs et les vecteurs propres de S)
+
+```{r}
+decomp2 <- eigen(A2)
+eigen_values2 <- decomp2$values
+eigen_vectors2 <- decomp2$vectors
+
+print(eigen_values2)
+print(eigen_vectors2)
+```
+
+```{r}
+# calcul des directions des axes factoriels
+u1_2 <- sqrt(Dn) %*% eigen_vectors2[, 1]
+u2_2 <- sqrt(Dn) %*% eigen_vectors2[, 2]
+
+# nouvelles coordonnées des individus sur le nouveau plan factoriel
+C1_2 <- t(V) %*% u1_2
+C2_2 <- t(V) %*% u2_2
+
+# Visualisation du nuage de points dans l'hyperplan obtenu
+plot(C1_2, C2_2, type = "p", xlim = c(-0.15, 0.05), ylim = c(-0.1, 0.1), col = "blue")
+text(C1_2, C2_2, colnames(V), cex = 0.7, pos = 3, col = "blue")
+abline(h = 0, col = "gray")
+abline(v = 0, col = "gray")
+```
+
+### 3)
+
+
+```{r}
+#All points in the same plot
+plot(C1, C2, pch = 24, cex = 1, col = "blue", lwd = 2, xlim = c(-0.15, 0.05), ylim = c(-0.1, 0.1))
+text(C1, C2, rownames(V), cex = 0.75, col = "blue", pos = 3)
+points(C1_2, C2_2, pch = 25, cex = 1, col = "red", lwd = 2)
+text(C1_2, C2_2, colnames(V), cex = 0.75, col = "red", pos = 1)
+abline(h = 0, col = "gray")
+abline(v = 0, col = "gray")
+```
+D'après la figure, on voit bien que les hommes ont tendance à occuper la fonction d'ingénieur, alors que les femmes préfèrent plutôt les fonctions administratives. On remarque aussi une trés forte ressemblance entre "Direction" et "Contractuel S2", ainsi qu'entre "Technicien supérieur" et "Contractuel S1".
+
+Pour l'interprétation, il est utile de repartir de la réparation du nuage de points et d'en déduire l'indépendance et l'inertie des axes. Une inertie faible entraine un nuage concentré autour du centre de gravité, alors qu'une inertie grande dilate le nuage. Ici, on remarque que les points sont trops concentrés autour de l'axe de gravité, ce qui implique un taux d'inertie trop faible.
+
+L'indépendance donne un nuage de forme sphérique ; l'existence de dépendance provoque un étirement du nuage dans une direction donnée.
+
+### 4)
+
+#### Calcul de la qualité de la projection avec la cascade de valeurs propres, et projection des profils lignes)
+
+```{r}
+# Nouvelles coordonnées dans Rp
+co_lignes2 <- V %*% sqrt(Dp) %*% eigen_vectors1
+
+# Nouvelles coordonnées dans Rn
+co_colonnes2 <- t(V) %*% sqrt(Dn) %*% eigen_vectors2
+
+quality <- function(n, i, k) {
+  A <- sum((n[i, ]^2))
+  B <- sum((n[i, 1:k]^2))
+  return(B / A)
+}
+
+# Qualité des projections sur Rn
+quality1 <- rep(0, 3)
+
+for (i in 1:3) {
+  quality1[i] <- quality(co_lignes2, i, 2)
+}
+
+# Qualité des projections sur Rp
+quality2 <- rep(0, 7)
+
+for (i in 1:7) {
+  quality2[i] <- quality(co_colonnes2, i, 2)
+}
+
+print(quality1)
+print(quality2)
+```
+
+### 5)
+####Comparaison avec la CA de `FactoMineR`)
+
+```{r}
+library("FactoMineR")
+library("factoextra")
+library("datasets")
+library("ggplot2")
+library("gplots")
+library("dplyr")
+```
+
+#### Représentation graphique)
+
+```{r}
+dt <- as.table(as.matrix (V0))
+colnames(dt) <- c('0','1','2','3','4','5','6','7')
+balloonplot(t (dt), main = "Table de contingence", xlab = "fonction", ylab = "sexe", label = TRUE, show.margins = TRUE)
+```
+
+#### Test de chi2)
+
+```{r}
+chisq <- chisq.test(V0)
+chisq
+```
+
+#### Application de l'AFC)
+
+```{r}
+res.ca <- CA(V0, graph = FALSE)
+```
+
+#### calcul des inerties(valeurs propres))
+
+```{r}
+eig.val <- get_eigenvalue(res.ca)
+eig.val
+```
+
+#### inertie des axes)
+
+```{r}
+fviz_screeplot(res.ca, addlabels = TRUE, ylim = c(0, 80))
+```
+```{r}
+fviz_screeplot(res.ca) +
+  geom_hline(yintercept = 33.33, linetype = 2, color = "red")
+```
+
+```{r}
+#### Nuage mixte des points)
+fviz_ca_biplot (res.ca, repel = TRUE)
+```
+
+
+
