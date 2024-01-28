@@ -1,0 +1,430 @@
+---
+title: "TP Krigeage - Challenge"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#1. SROUR Mathieu
+#2. ALLOUCH Omar
+#3. LAMNAOIR Imane
+```
+
+Dans ce compte rendu, nous présentons les différentes méthodes testées. On teste chaque méthode par la crosse validation afin d'évaluer la performance de la manière la plus pertinante possible puisqu'on a remarqué que le changement de la décomposition train/test peut changer largement les résultats trouvés. La méthode retenue est celle de la partie 8.
+
+# Les prédiction
+
+# 1. Dévision en ensemble d'apprentissage et ensemble test
+
+On commence d'abord par déviser notre base de données à une base d'apprentissage et une base test afin de voir le meilleur modèle en calculant RMSE sur les données test.
+
+ Notre base de données contient 700 observations avec 7 variables. La base d'apprentissage contiendra 550 observations et la base de test contiendra 150. Cela nous permet d'avoir les paramètres optimaux de chaque modèle tout en évitant le surpprentissage puisque le RMSE sera calculé sur l'ensemble de test.
+
+```{r}
+set.seed(12345)
+Observations = read.csv("defi_observations.csv", header = TRUE)
+p<-7
+n<-700
+X=Observations[,1:p]
+Y=Observations[,(p+1)]
+n_app<-550
+n_test<-150
+y_app<-Observations[1:n_app,8]
+X_app<-Observations[1:n_app,1:p]
+y_test<-Observations[(n_app+1):n,8]
+X_test<-Observations[(n_app+1):n,1:p]
+mu.y<-mean(y_app)
+# prédiction de Y par sa moyenne sur les données d'apprentissage
+RMSE.ref<-sqrt(sum((y_test-mu.y)^2)/n_test)
+print(RMSE.ref)
+```
+
+On remarque que La valeur RMSE en utilisant la moyenne est très élevée.
+
+# 1.a Dévision en ensemble d'apprentissage et ensemble test et moyenne avec Cross Validation
+
+```{r}
+#mélanger les données aléatoirement
+Observations<-Observations[sample(nrow(Observations)),]
+#Creation de 10 plis de taille egale
+folds <- cut(seq(1,nrow(Observations)),breaks=5,labels=FALSE)
+lR<-seq(1,5)
+# 10 plis validation croisée
+for(i in 1:5){
+  testIndexes <- which(folds==i,arr.ind=TRUE)
+  y_app_cv<-Observations[-testIndexes,8]
+  X_app_cv<-Observations[-testIndexes,1:p]
+  y_test_cv<-Observations[testIndexes,8]
+  X_test_cv<-Observations[testIndexes,1:p]
+  mucv.y<-mean(y_app_cv)
+  # prédiction de Y par sa moyenne sur les données d'apprentissage
+  RMSE.ref<-sqrt(sum((y_test_cv-mucv.y)^2)/n_test)
+  lR[i] <- RMSE.ref
+  #print(RMSE.ref)
+}
+print(mean(lR))
+```
+
+# 2. La fonction pour calculer RMSE
+
+On implémente une fonction qui calcule la valeur de RMSE et qui en même temps trace le graphe des résidus et le graphe des observations en fonction des prédictions.
+
+```{r}
+rmse<-function(y, ypred, trace=FALSE){
+  
+  rmse=y-ypred
+  
+  if( trace){
+  plot( ypred, y, xlab="Ypred", ylab="Ytrue")
+  abline(a=0,b=1, col="blue")
+  title(" Valeurs observées en fonctions des prédictions")
+  
+  plot(rmse, main="Résidus")
+  }
+  
+  return( sqrt( mean( rmse**2)  ) )
+}
+```
+
+# 3. Krigeage Simple
+
+Nous commençant par la méthode de krigeage simple, et on varie la valeur de theta afin d'avoir la valeur RMSE la plus petite.
+
+```{r}
+library(DiceKriging)
+``` 
+
+```{r}
+theta=rep(9.4,7)
+Msimple<-km(formula=~1,design=X_app,response=y_app,coef.trend=0,coef.cov=theta,coef.var = 1)
+predsimple<-predict(object =Msimple,newdata=X_test,type="SK",ckeckNames=False )
+Meansimple<-predsimple$mean
+rmse(y_test, Meansimple, trace=TRUE)
+```
+
+# 3.a Krigeage Simple avec CrossValidation
+
+```{r}
+#Randomly shuffle the data
+Observations<-Observations[sample(nrow(Observations)),]
+#Create 10 equally size folds
+folds <- cut(seq(1,nrow(Observations)),breaks=5,labels=FALSE)
+lR<-seq(1,5)
+#Perform 10 fold cross validation
+for(i in 1:5){
+  #Segement your data by fold using the which() function 
+  testIndexes <- which(folds==i,arr.ind=TRUE)
+  y_app_cv<-Observations[-testIndexes,8]
+  X_app_cv<-Observations[-testIndexes,1:p]
+  y_test_cv<-Observations[testIndexes,8]
+  X_test_cv<-Observations[testIndexes,1:p]
+  
+  Msimplecv<-km(formula=~1,design=X_app_cv,response=y_app_cv,coef.trend=0,coef.cov=theta,coef.var = 1)
+  predsimplecv<-predict(object =Msimplecv,newdata=X_test_cv,type="SK",ckeckNames=False )
+  Meansimplecv<-predsimplecv$mean
+  lR[i] <- rmse(y_test_cv, Meansimplecv)
+  #print(rmse(y_test_cv, Meansimplecv))
+}
+print(mean(lR))
+```
+
+# 4. Krigeage Ordinaire
+
+On teste après la méthode de krigeage ordinaire
+
+```{r}
+theta=rep(8,7)
+Mordinaire<-km(formula=~1,design=X_app,response=y_app,coef.trend=NULL,coef.cov=theta,coef.var = 1)
+predordinaire<-predict(object =Mordinaire,newdata=X_test,type="UK",ckeckNames=False )
+Meanordinaire<-predordinaire$mean
+rmse(y_test, Meanordinaire, trace=TRUE)
+```
+
+# 4. Krigeage Ordinaire avec CrossValidation
+
+```{r}
+Observations<-Observations[sample(nrow(Observations)),]
+#Create 10 equally size folds
+folds <- cut(seq(1,nrow(Observations)),breaks=5,labels=FALSE)
+lR<-seq(1,5)
+#Perform 10 fold cross validation
+for(i in 1:5){
+  #Segement your data by fold using the which() function 
+  testIndexes <- which(folds==i,arr.ind=TRUE)
+  y_app_cv<-Observations[-testIndexes,8]
+  X_app_cv<-Observations[-testIndexes,1:p]
+  y_test_cv<-Observations[testIndexes,8]
+  X_test_cv<-Observations[testIndexes,1:p]
+  
+  Mordinaire<-km(formula=~1,design=X_app_cv,response=y_app_cv,coef.trend=NULL,coef.cov=theta,coef.var = 1)
+  predordinaire<-predict(object =Mordinaire,newdata=X_test_cv,type="UK",ckeckNames=False )
+  Meanordinaire<-predordinaire$mean
+  lR[i] <- rmse(y_test_cv, Meanordinaire)
+}
+print(mean(lR))
+```
+
+# 5. Krigeage universal
+
+Pour la mèthode de krigeage universel, on teste les deux formule "y\~1+X" et "y\~1+X+X\^2" qui nous donne presque le même résultat
+
+```{r}
+theta=rep(8.4,7)
+Muniversel <- km(formula = ~y_app~1+.+.^2, coef.trend = NULL, design = X_app, response = y_app,coef.cov=theta,coef.var = 1)
+preduniversel <- predict(object = Muniversel, newdata = X_test, type = "UK")
+meanuniversel <- preduniversel$mean
+rmse(y_test, meanuniversel, trace=TRUE)
+```
+
+# 5.a Krigeage universal avec CrossValidation
+
+```{r}
+Observations<-Observations[sample(nrow(Observations)),]
+#Create 10 equally size folds
+folds <- cut(seq(1,nrow(Observations)),breaks=5,labels=FALSE)
+lR<-seq(1,5)
+#Perform 10 fold cross validation
+for(i in 1:5){
+  #Segement your data by fold using the which() function 
+  testIndexes <- which(folds==i,arr.ind=TRUE)
+  y_app_cv<-Observations[-testIndexes,8]
+  X_app_cv<-Observations[-testIndexes,1:p]
+  y_test_cv<-Observations[testIndexes,8]
+  X_test_cv<-Observations[testIndexes,1:p]
+  
+  Muniversel <- km(formula = ~y_app_cv~1+.+.^2, coef.trend = NULL, design = X_app_cv, response = y_app_cv,coef.cov=theta,coef.var = 1)
+  preduniversel <- predict(object = Muniversel, newdata = X_test_cv, type = "UK")
+  meanuniversel <- preduniversel$mean
+  
+  lR[i] <- rmse(y_test_cv, meanuniversel)
+}
+print(mean(lR))
+```
+
+# 6. Optimisation par LOO
+
+Dans les dernières méthodes, l'optimisation de la portée n'est pas simple puisque on parle d'un vecteur de 7 composantes et pas d'un simple réel, pour cette raison on utilise la méthode de leave-one-out et la méthode du maximum de vraisemblance.
+
+Dans l'implémentation de ces deux méthodes, on varie à chaque fois la structure de covariance "covtype" entre "gauss", "matern5_2", "matern3_2", "exp" ou "powexp" et dans tous les cas la covariance gaussienne nous donne les meilleur résultats.
+
+```{r}
+famille="matern5_2"
+Mloo<-km(formula=~.^2,design=X_app,response=y_app,covtype="gauss",coef.trend=NULL,estim.method = "LOO")
+```
+
+```{r}
+bestThetaLOO = coef(Mloo, "range")
+sd2LOO = coef(Mloo, "sd2")
+predLOO<-predict(object=Mloo,newdata=X_test,type="UK",ckeckNames=FALSE )
+MeanLOO<-predLOO$mean
+rmse(y_test, MeanLOO, trace=TRUE)
+```
+
+```{r}
+message("DiceKriging: par optimisation MLE, theta= ", bestThetaLOO)
+```
+
+# 6.a Optimisation par LOO CV
+
+```{r}
+Observations<-Observations[sample(nrow(Observations)),]
+#Create 10 equally size folds
+folds <- cut(seq(1,nrow(Observations)),breaks=5,labels=FALSE)
+lR<-seq(1,5)
+#Perform 10 fold cross validation
+for(i in 1:5){
+  #Segement your data by fold using the which() function 
+  testIndexes <- which(folds==i,arr.ind=TRUE)
+  y_app_cv<-Observations[-testIndexes,8]
+  X_app_cv<-Observations[-testIndexes,1:p]
+  y_test_cv<-Observations[testIndexes,8]
+  X_test_cv<-Observations[testIndexes,1:p]
+  
+  Mloo<-km(formula=~.^2,design=X_app_cv,response=y_app_cv,covtype="gauss",coef.trend=NULL,estim.method = "LOO")
+  bestThetaLOO = coef(Mloo, "range")
+  sd2LOO = coef(Mloo, "sd2")
+  predLOO<-predict(object=Mloo,newdata=X_test_cv,type="UK",ckeckNames=FALSE )
+  MeanLOO<-predLOO$mean
+
+  lR[i] <- rmse(y_test_cv, MeanLOO)
+}
+```
+
+```{r}
+print(mean(lR))
+```
+
+# 7. Optimisation par MLE
+
+```{r}
+MMLE <- km(formula = ~.^2, design = X_app, response = y_app, covtype = "gauss", coef.trend = NULL,  estim.method = "MLE",nugget = 1e-13)
+```
+
+```{r}
+predMLE <- predict(object = MMLE, newdata = X_test , type="UK" , checkNames=FALSE, se.compute=TRUE)
+MeanMLE<-predMLE$mean
+rmse(y_test, MeanMLE, trace=TRUE)
+```
+
+```{r}
+bestThetaMLE = coef(MMLE, "range")
+sd2MLE = coef(MMLE, "sd2")
+
+message("DiceKriging: par optimisation MLE, theta= ", bestThetaMLE)
+```
+
+# 7.a Optimisation par MLE avec CV
+
+```{r}
+Observations<-Observations[sample(nrow(Observations)),]
+#Create 10 equally size folds
+folds <- cut(seq(1,nrow(Observations)),breaks=5,labels=FALSE)
+lR<-seq(1,5)
+#Perform 10 fold cross validation
+for(i in 1:5){
+  #Segement your data by fold using the which() function 
+  testIndexes <- which(folds==i,arr.ind=TRUE)
+  y_app_cv<-Observations[-testIndexes,8]
+  X_app_cv<-Observations[-testIndexes,1:p]
+  y_test_cv<-Observations[testIndexes,8]
+  X_test_cv<-Observations[testIndexes,1:p]
+  
+  MMLE <- km(formula = ~.^2, design = X_app_cv, response = y_app_cv, covtype = "gauss", coef.trend = NULL,  estim.method = "MLE",nugget = 1e-13)
+  predMLE <- predict(object = MMLE, newdata = X_test_cv , type="UK" , checkNames=FALSE, se.compute=TRUE)
+  MeanMLE<-predMLE$mean
+
+  lR[i] <- rmse(y_test_cv, MeanMLE)
+  #print(rmse(y_test_cv, Meanordinaire))
+}
+```
+
+```{r}
+print(mean(lR))
+```
+
+Dans toutes les méthodes précedentes, avec ou sans cross validation, on obtient une valeur de RMSE de l'ordre de $10^{-3}$ qui est déjà une valeur très petite par rapport à la moyenne calculée dans la première partie. Pourtant, on va essayer une autre méthode afin de diminuer de plus la valeur RMSE.
+
+# 8. Régression linéaire
+
+On fait une régression entre y et les 7 variables par une interaction de deuxième ordre afin de voir les variables les moins significatifs
+
+```{r}
+library(caret)
+```
+
+```{r}
+# cross validation 
+train_control <- trainControl(method = "cv",
+                              number = 5)
+rlm=lm(y_app~1+.+.^2, data=X_app,trControl = train_control)
+```
+
+```{r}
+summary(rlm)
+```
+
+On voit clairement que les variables $X3$ et $X4$ sont très peu significatives étant avoir une p_valeur\>0.05 et très peu influentes ( beta petits par rapport aux autres paramètres). On chosisit du coup d'enlever ces variable et refaire le krigeage avec les 5 autres, en ajoutant les interaction significatifs.
+
+```{r}
+X_app1=X_app[, c(-3, -4)]
+X_test1=X_test[, c(-3, -4)]
+```
+
+```{r}
+famille="matern5_2"
+Model <- km(formula = ~1+.+.^2+I(X2^2)+I(X6^2)+I(X5^2)+I(X1^2)-X1:X6-X3:X5-X4:X5-X2:X3-X4:X7, design = X_app1, response = y_app, covtype = "gauss",coef.trend = NULL,  estim.method = "LOO")
+```
+
+```{r}
+pred <- predict(object = Model, newdata = X_test1, type="UK" , checkNames=FALSE, se.compute=TRUE)
+Mean<-pred $mean
+rmse(y_test,Mean, trace=TRUE)
+```
+
+# avec Cross Validation
+
+```{r}
+Observations<-Observations[sample(nrow(Observations)),]
+#Create 10 equally size folds
+folds <- cut(seq(1,nrow(Observations)),breaks=5,labels=FALSE)
+lR<-seq(1,5)
+#Perform 10 fold cross validation
+for(i in 1:5){
+  #Segement your data by fold using the which() function 
+  testIndexes <- which(folds==i,arr.ind=TRUE)
+  y_app_cv<-Observations[-testIndexes,8]
+  X_app_cv<-Observations[-testIndexes,1:p]
+  y_test_cv<-Observations[testIndexes,8]
+  X_test_cv<-Observations[testIndexes,1:p]
+  
+  X_app1_cv=X_app_cv[, c(-3, -4)]
+  X_test1_cv=X_test_cv[, c(-3, -4)]
+  famille="matern5_2"
+  Model <- km(formula = ~1+.+.^2+I(X2^2)+I(X6^2)+I(X5^2)+I(X1^2)-X1:X6-X3:X5-X4:X5-X2:X3-X4:X7, design = X_app1_cv, response = y_app_cv, covtype = "gauss",coef.trend = NULL,  estim.method = "LOO")
+  pred <- predict(object = Model, newdata = X_test1_cv, type="UK" , checkNames=FALSE, se.compute=TRUE)
+  Mean<-pred $mean
+
+  lR[i] <- rmse(y_test_cv,Mean)
+}
+```
+
+```{r}
+print(mean(lR))
+```
+
+# 9.Choix de la méthode finale et prédictions
+
+Nous retenons la dernière méthode qui donne un RMSE de l'ordre de $10^{-4}$ même avec crossValidation.
+
+Pour la prédiction finale, la base d'apprentissage contiendra toute la base de données avec ces 550 observations portant que la base de test contiendra les 150 individus dont on doit prédir leur Y .
+
+```{r}
+set.seed(12345)
+Observations = read.csv("defi_observations.csv", header = TRUE)
+p<-7
+n<-550
+X_train=Observations[,1:p]
+Y_train=Observations[,(p+1)]
+X_test2=read.csv("defi_apredire.csv",header=TRUE)
+X_t=X_test2[,]
+X_train1=X_train[, c(-3, -4)]
+X_test2=X_test2[, c(-3, -4)]
+famille="matern5_2"
+ModelF <- km(formula = ~1+.+.^2+I(X2^2)+I(X6^2)+I(X5^2)+I(X1^2)-X1:X6-X3:X5-X4:X5-X2:X3-X4:X7, design = X_train1, response = Y_train, covtype = "gauss",coef.trend = NULL,  estim.method = "LOO")
+```
+
+```{r}
+predF <- predict(object = ModelF, newdata = X_test2, type="UK" , checkNames=FALSE, se.compute=TRUE)
+bestThetaF = coef(ModelF, "range")
+sd2F = coef(ModelF, "sd2")
+# moyenne krigeage 
+pred_finale<- predF$mean
+v_Dice <- (predF$sd)^2
+#géneration du la base de prédiction
+n_test=150
+Predfinale=matrix(0, nrow=n_test, ncol=8)
+Predfinale[,1:7]=as.matrix(X_t)
+Predfinale[,8]= as.matrix(pred_finale)
+
+Predfinale=as.data.frame(Predfinale)
+colnames(Predfinale)=c("X1", "X2", "X3", "X4", "X5", "X6", "X7", "Y")
+
+write.csv(Predfinale,"DefiGroupeSROUR.csv", row.names = FALSE)
+
+#on vérifie que c'est bien lisible
+LectureDeMonFichier = read.csv("DefiGroupeSROUR.csv", header = TRUE)
+message(ncol(LectureDeMonFichier) == 8, ": bon nombre de colonnes")
+```
+
+```{r}
+message(nrow(LectureDeMonFichier) == 150, ": bon nombre de lignes")
+```
+
+```{r}
+print(LectureDeMonFichier)
+```
